@@ -1,12 +1,3 @@
-// ucsbece154a_controller.v
-// All Rights Reserved
-// Copyright (c) 2023 UCSB ECE
-// Distribution Prohibited
-
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-// TO DO: Replace all `z` values with the correct values  
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
 module ucsbece154a_controller (
     input               clk, reset,
     input         [6:0] op_i, 
