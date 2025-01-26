@@ -1,8 +1,4 @@
 /*
-YOUR NAME HERE Benjamin Soo, John Hagedorn
-ECE 154A - Fall 2012
-Lab 2 - Mystery Caches
-Due: 12/3/12, 11:00 pm
 Mystery Cache Geometries:
 mystery0:
     block size =  64 bytes
