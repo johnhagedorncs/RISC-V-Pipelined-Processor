@@ -1,12 +1,3 @@
-// ucsbece154a_datapath.v
-// All Rights Reserved
-// Copyright (c) 2023 UCSB ECE
-// Distribution Prohibited
-
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-// TO DO: Add mising code below  
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
 module ucsbece154a_datapath (
     input               clk, reset,
     input               PCEn_i,
