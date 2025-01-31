@@ -1,97 +1,67 @@
-/*
-Mystery Cache Geometries:
-mystery0:
-    block size =  64 bytes
-    cache size = 4194304 bytes
-    associativity = 16
-mystery1:
-    block size = 4 bytes
-    cache size = 4096 bytes
-    associativity = 1
-mystery2:
-    block size = 32 bytes
-    cache size = 4096 bytes
-    associativity = 128
-*/
-#include <stdlib.h>
 #include <stdio.h>
-#include "mystery-cache.h"
-/*
-   Returns the size (in B) of the cache.
-*/
-int get_cache_size(int block_len) {
-  flush_cache();
-  access_cache(0);
+#include <stdlib.h>
+#include <stdint.h>
+#include <stdbool.h>
 
-  int curr_step = 0;
-  int max_bound = block_len;
+#define CACHE_SIZE 1024  // Adjusted for IoT optimization
+#define BLOCK_SIZE 16     // Smaller blocks for energy efficiency
+#define ASSOCIATIVITY 2   // Reduced complexity for low-power devices
 
-  while (access_cache(0)) 
-  {
-    curr_step = block_len;
-    int curr_offset = block_len;
-    while (curr_offset <= max_bound) {
-      curr_step = curr_offset;
-      access_cache(curr_offset);
-      curr_offset += block_len;
+typedef struct {
+    uint32_t tag;
+    uint8_t data[BLOCK_SIZE];
+    bool valid;
+    bool dirty;
+} CacheBlock;
+
+CacheBlock cache[CACHE_SIZE / BLOCK_SIZE][ASSOCIATIVITY];
+
+uint32_t access_memory(uint32_t address, bool write, uint8_t data) {
+    uint32_t index = (address / BLOCK_SIZE) % (CACHE_SIZE / BLOCK_SIZE);
+    uint32_t tag = address / CACHE_SIZE;
+    int hit = -1;
+
+    for (int i = 0; i < ASSOCIATIVITY; i++) {
+        if (cache[index][i].valid && cache[index][i].tag == tag) {
+            hit = i;
+            break;
+        }
     }
-    max_bound += block_len;
-  }
-  return curr_step;
-}
-/*
-   Returns the associativity of the cache.
-*/
-int get_cache_assoc(int cache_size) {
-  flush_cache();
-  access_cache(0);
-  int curr_pos = 0;
-  int max_limit = 1;
-  int ways = 0;
-  while (access_cache(0)) 
-  {
-    ways = 0;
-    curr_pos = cache_size;
-    while (curr_pos <= max_limit) 
-    {
-      ways++;
-      access_cache(curr_pos);
-      curr_pos += cache_size;
+
+    if (hit != -1) { // Cache hit
+        if (write) {
+            cache[index][hit].data[address % BLOCK_SIZE] = data;
+            cache[index][hit].dirty = true;
+        }
+        return cache[index][hit].data[address % BLOCK_SIZE];
+    } else { // Cache miss
+        int evict = rand() % ASSOCIATIVITY; // Random replacement policy for simplicity
+        
+        if (cache[index][evict].dirty) {
+            // Write back to memory before replacement
+            printf("Writing back dirty block before replacement\n");
+        }
+
+        cache[index][evict].tag = tag;
+        cache[index][evict].valid = true;
+        cache[index][evict].dirty = false;
+        
+        if (write) {
+            cache[index][evict].data[address % BLOCK_SIZE] = data;
+            cache[index][evict].dirty = true;
+        }
+
+        return cache[index][evict].data[address % BLOCK_SIZE];
     }
-    max_limit += cache_size;
-  }
-  return ways;
 }
-/*
-   Returns the size (in B) of each block in the cache.
-*/
-int get_block_size(void) {
-  flush_cache();
-  access_cache(0);
-  int block_len = 0;
-  while(access_cache(block_len)) 
-  {
-    block_len++;
-  }
-  return block_len;
-}
-int main(void) {
-  int cache_size;
-  int ways;
-  int block_len;
-  
-  /* The cache needs to be initialized, but the parameters will be
-     ignored by the mystery caches, as they are hard coded.
-     You can test your geometry paramter discovery routines by 
-     calling cache_init() w/ your own size and block size values. */
-  cache_init(0,0);
-  
-  block_len = get_block_size();
-  cache_size = get_cache_size(block_len);
-  ways = get_cache_assoc(cache_size);
-  printf("Cache size: %d bytes\n", cache_size);
-  printf("Cache associativity: %d\n", ways);
-  printf("Cache block size: %d bytes\n", block_len);
-  
-  return EXIT_SUCCESS;
+
+int main() {
+    printf("Initializing IoT-optimized cache system...\n");
+    for (int i = 0; i < CACHE_SIZE / BLOCK_SIZE; i++) {
+        for (int j = 0; j < ASSOCIATIVITY; j++) {
+            cache[i][j].valid = false;
+            cache[i][j].dirty = false;
+        }
+    }
+    return 0;
 }
