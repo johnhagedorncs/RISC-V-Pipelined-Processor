@@ -3,7 +3,7 @@ module ucsbece154a_controller (
     input         [6:0] op_i, 
     input         [2:0] funct3_i,
     input               funct7_i,
-    input 	        zero_i,
+    input               zero_i,
     output wire         PCWrite_o,
     output reg          MemWrite_o,    
     output reg          IRWrite_o,
@@ -16,19 +16,20 @@ module ucsbece154a_controller (
     output reg    [2:0] ImmSrc_o
 );
 
-
  `include "ucsbece154a_defines.vh"
 
  always @ * begin
    case (op_i)
-	instr_lw_op:        ImmSrc_o = 3'b000;       
-	instr_sw_op:        ImmSrc_o = 3'b001; 
-	instr_Rtype_op:     ImmSrc_o = 3'bxxx;  
-	instr_beq_op:       ImmSrc_o = 3'b010;  
-	instr_ItypeALU_op:  ImmSrc_o = 3'b000; 
-	instr_jal_op:       ImmSrc_o = 3'b011; 
-        instr_lui_op:       ImmSrc_o = 3'b100;  
-	default: 	    ImmSrc_o = 3'bxxx; 
+    instr_lw_op:        ImmSrc_o = 3'b000;       
+    instr_sw_op:        ImmSrc_o = 3'b001; 
+    instr_Rtype_op:     ImmSrc_o = 3'bxxx;  
+    instr_beq_op:       ImmSrc_o = 3'b010;  
+    instr_ItypeALU_op:  ImmSrc_o = 3'b000; 
+    instr_jal_op:       ImmSrc_o = 3'b011; 
+    instr_lui_op:       ImmSrc_o = 3'b100;  
+    instr_sleep_op:     ImmSrc_o = 3'b101;  // IoT SLEEP Instruction
+    instr_wakeup_op:    ImmSrc_o = 3'b110;  // IoT WAKEUP Instruction
+    default:            ImmSrc_o = 3'bxxx; 
    endcase
  end
 
@@ -48,27 +49,35 @@ module ucsbece154a_controller (
            instr_slt_funct3:      ALUControl_o = ALUcontrol_slt;  
            instr_or_funct3:       ALUControl_o = ALUcontrol_or;  
            instr_and_funct3:      ALUControl_o = ALUcontrol_and;  
+           instr_mac_funct3:      ALUControl_o = ALUcontrol_mac;  // IoT MAC Instruction
+           instr_andl_funct3:     ALUControl_o = ALUcontrol_andl; // IoT Low-power AND
+           instr_orl_funct3:      ALUControl_o = ALUcontrol_orl;  // IoT Low-power OR
            default:               ALUControl_o = 3'bxxx;
          endcase
     default:                      ALUControl_o = 3'bxxx;
    endcase
  end
 
- reg Branch, PCUpdate;   // these are FFs updated each cycle 
+ reg Branch, PCUpdate, SleepMode;   // SleepMode for IoT low-power state
 
  assign PCWrite_o = Branch & zero_i | PCUpdate; 
 
+ always @(posedge clk) begin
+    if (reset) begin
+        SleepMode <= 1'b0;  // Ensure processor starts in active mode
+    end else if (op_i == instr_sleep_op) begin
+        SleepMode <= 1'b1;  // Enter Sleep Mode
+    end else if (op_i == instr_wakeup_op) begin
+        SleepMode <= 1'b0;  // Exit Sleep Mode
+    end
+ end
 
-// ******************************************
-// *********  Main FSM  *********************
-// ******************************************
-
- reg [3:0] state; //  FSM FFs encoding the state 
+ reg [3:0] state; // FSM FFs encoding the state 
  reg [3:0] state_next;
 
  always @ * begin
     if (reset) begin
-                               state_next = state_Fetch;  
+        state_next = state_Fetch;  
     end else begin             
       case (state) 
         state_Fetch:           state_next = state_Decode;  
@@ -81,9 +90,12 @@ module ucsbece154a_controller (
             instr_ItypeALU_op: state_next = state_ExecuteI;  
             instr_lui_op:      state_next = state_LUI;  
             instr_jal_op:      state_next = state_JAL;  
+            instr_sleep_op:    state_next = state_Sleep;  // IoT Sleep Mode
+            instr_wakeup_op:   state_next = state_Fetch;  // Resume Fetch after wakeup
             default:           state_next = 4'bxxxx;
           endcase
         end
+        state_Sleep:           state_next = state_Sleep;  // Maintain low-power state until wakeup
         state_MemAdr: begin 
           case (op_i)
             instr_lw_op:       state_next = state_MemRead;  
@@ -105,33 +117,6 @@ module ucsbece154a_controller (
    end
  end
 
- reg [13:0] controls_next;
- wire       PCUpdate_next, Branch_next, MemWrite_next, IRWrite_next, RegWrite_next, AdrSrc_next;
- wire [1:0] ALUSrcA_next, ALUSrcB_next, ResultSrc_next, ALUOp_next;
-
- assign {
-	PCUpdate_next, Branch_next, MemWrite_next, IRWrite_next, RegWrite_next,
-        ALUSrcA_next, ALUSrcB_next, AdrSrc_next, ResultSrc_next, ALUOp_next
-	} = controls_next;
-
- always @ * begin
-   case (state_next)
-        state_Fetch:     controls_next = 14'b1_x_0_1_0_00_10_0_10_00; // Fetch
-        state_Decode:    controls_next = 14'b0_0_0_0_0_01_01_x_01_00; // Decode
-        state_MemAdr:    controls_next = 14'b0_0_0_0_0_10_01_x_01_00; // MemAdr
-        state_MemRead:   controls_next = 14'b0_0_0_0_0_xx_xx_1_xx_xx; // MemRead
-        state_MemWB:     controls_next = 14'b0_0_0_0_1_xx_xx_x_01_xx; // MemWB
-        state_MemWrite:  controls_next = 14'b0_0_1_0_0_xx_xx_1_xx_xx; // MemWrite
-        state_ExecuteR:  controls_next = 14'b0_0_0_0_0_10_00_x_00_10; // ExecuteR
-        state_ALUWB:     controls_next = 14'b0_0_0_0_1_xx_xx_x_00_xx; // ALUWB
-        state_ExecuteI:  controls_next = 14'b0_0_0_0_0_10_01_x_01_10; // ExecuteI
-        state_JAL:       controls_next = 14'b1_0_0_0_1_01_10_x_00_00; // JAL
-        state_BEQ:       controls_next = 14'b0_1_0_0_0_10_00_x_00_01; // BEQ
-        state_LUI:       controls_next = 14'b0_0_0_0_1_10_01_0_11_00; // LUI
-        default:         controls_next = 14'bx_x_x_x_x_xx_xx_x_xx_xx; // Default
-   endcase
-end
-
  always @(posedge clk) begin
     state <= state_next;
     PCUpdate <= PCUpdate_next;
@@ -144,6 +129,6 @@ end
     AdrSrc_o <= AdrSrc_next;
     ResultSrc_o <= ResultSrc_next;
     ALUOp <= ALUOp_next;
-  end
+end
 
 endmodule
